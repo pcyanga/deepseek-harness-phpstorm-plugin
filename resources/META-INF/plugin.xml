@@ -1,0 +1,42 @@
+<idea-plugin>
+  <id>com.aicn.web</id>
+  <name>DeepSeek Harness Web</name>
+  <vendor email="1083481902@qq.com">aicn</vendor>
+  <version>0.3.16</version>
+
+  <description><![CDATA[
+    <h3>DeepSeek Harness Web</h3>
+    <p>在 PhpStorm 工具窗中嵌入本机 <b>DeepSeek Harness</b> 网页端（127.0.0.1:3080），
+    对话界面与交互完全沿用网页端（侧边栏/消息/模型/设置/审批），并补充 IDE 集成：
+    拖入文件/代码到输入框、当前项目文件夹工作区、Harness 服务自动启动与开关。</p>
+    <h4>功能</h4>
+    <ul>
+      <li>嵌入式网页对话界面：与 http://127.0.0.1:3080/ 完全一致</li>
+      <li>文件/代码引用显示为网页原生彩色 chip（同 Qoder/QoderCN 风格，带文件图标与
+          文件名:行号），chip 之间可直接输入描述文字、随光标删除/回车换行，多个引用
+          可并存于一段消息中；鼠标悬浮 chip 出现 ×，点击一键移除该引用（编辑器对应
+          选区同步清空）</li>
+      <li>选中代码 hover 确认：编辑器选中代码并稳定片刻后，选区上方弹出「添加到对话」
+          浮条（同 Qoder/QoderCN 交互），点击才把引用写入输入框——仅浏览/复制不再误
+          添加；发送时页面把 chip 序列化为完整路径:行号，AI 收到的始终是全路径，消息
+          发出后编辑器选区自动清除</li>
+      <li>降级兼容：若页面结构异常无法挂载 chip，自动退回文本引用通道（光标处
+          [[文件名:行号]] 标记 + 发送原位展开），任何页面版本下选中/拖入/发送均可靠</li>
+      <li>多窗口隔离：每个工具窗独立会话，选中代码/拖入文件/工作区只作用于所在窗口，互不串扰</li>
+      <li>工作区：自动注册当前项目文件夹并置顶，列表只显示当前文件夹（UI 层过滤）</li>
+      <li>Harness 服务：未运行时自动启动，顶栏按钮显示状态并可手动关闭</li>
+    </ul>
+  ]]></description>
+
+  <idea-version since-build="251.0"/>
+
+  <depends>com.intellij.modules.platform</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <toolWindow
+        id="AiHarnessWeb"
+        anchor="right"
+        icon="/icons/fish.png"
+        factoryClass="com.aicn.web.WebConsoleToolWindowFactory"/>
+  </extensions>
+</idea-plugin>
