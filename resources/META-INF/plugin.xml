@@ -2,16 +2,23 @@
   <id>com.aicn.web</id>
   <name>DeepSeek Harness Web</name>
   <vendor email="1083481902@qq.com">aicn</vendor>
-  <version>0.3.16</version>
+  <version>0.3.19</version>
 
   <description><![CDATA[
+    DeepSeek Harness Web brings your local DeepSeek Harness chat into a PhpStorm
+    tool window. Drag files or folders from the IDE into the chat input, or select
+    code in the editor and confirm on the hover bar - both instantly become rich
+    references in the message and are sent with full paths.
     <h3>DeepSeek Harness Web</h3>
     <p>在 PhpStorm 工具窗中嵌入本机 <b>DeepSeek Harness</b> 网页端（127.0.0.1:3080），
-    对话界面与交互完全沿用网页端（侧边栏/消息/模型/设置/审批），并补充 IDE 集成：
+    对话界面与交互完全沿用网页端（消息/模型/设置/审批），并补充 IDE 集成：
     拖入文件/代码到输入框、当前项目文件夹工作区、Harness 服务自动启动与开关。</p>
     <h4>功能</h4>
     <ul>
-      <li>嵌入式网页对话界面：与 http://127.0.0.1:3080/ 完全一致</li>
+      <li><b>拖动文件、选中代码，一键进入对话</b>：从 IDE 拖动任意文件/文件夹到输入框，
+          或选中代码后点选选区上方的「添加到对话」浮条——两者都立即生成带文件图标的
+          彩色引用 chip（文件名:行号），消息发送时自动携带完整路径，AI 所见即磁盘真实路径</li>
+      <li>嵌入式网页对话界面：与 http://127.0.0.1:3080/ 完全一致（对话窗工作区固定为当前文件夹、不再弹切换菜单；添加工作区入口隐藏；收起侧边栏时 rail 额外精简搜索图标——新建会话与设置等保留，专注对话；展开侧边栏时搜索等功能完整）</li>
       <li>文件/代码引用显示为网页原生彩色 chip（同 Qoder/QoderCN 风格，带文件图标与
           文件名:行号），chip 之间可直接输入描述文字、随光标删除/回车换行，多个引用
           可并存于一段消息中；鼠标悬浮 chip 出现 ×，点击一键移除该引用（编辑器对应
@@ -24,7 +31,8 @@
           [[文件名:行号]] 标记 + 发送原位展开），任何页面版本下选中/拖入/发送均可靠</li>
       <li>多窗口隔离：每个工具窗独立会话，选中代码/拖入文件/工作区只作用于所在窗口，互不串扰</li>
       <li>工作区：自动注册当前项目文件夹并置顶，列表只显示当前文件夹（UI 层过滤）</li>
-      <li>Harness 服务：未运行时自动启动，顶栏按钮显示状态并可手动关闭</li>
+      <li>Harness 服务：未运行时自动启动，顶栏按钮显示状态并可手动关闭；设置项可清空保存
+          （三项全空 = 未配置），未配置时工具窗内显示下载安装引导与教程，不再自动探测/启动</li>
     </ul>
   ]]></description>
 

@@ -5,6 +5,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBTextField;
+import com.intellij.util.ui.UIUtil;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -22,8 +23,9 @@ import java.awt.Insets;
 
 /**
  * Harness 设置对话框：工作目录 / 启动命令 / 服务地址。
- * 「确定」把值写入 {@link PluginSettings}（PropertiesComponent 持久化）。
- * 调用方通过 {@link #applied()} 判断是否需要按新值（尤其服务地址变化时）重载页面。
+ * 「确定」把值写入 {@link PluginSettings}（PropertiesComponent 持久化）；三项全空 =
+ * 「未配置」，保存后工具窗显示安装引导（回显用 rawXxx()，清空不会被默认值填回）。
+ * 调用方通过 {@link #applied()} 判断是否需要按新值重载页面。
  */
 public class SettingsDialog extends JDialog {
 
@@ -35,9 +37,9 @@ public class SettingsDialog extends JDialog {
   public SettingsDialog(Component parent) {
     super(parent == null ? null : SwingUtilities.getWindowAncestor(parent),
         "Harness 设置", ModalityType.APPLICATION_MODAL);
-    dirField.setText(PluginSettings.harnessDir());
-    cmdField.setText(PluginSettings.startCommand());
-    baseField.setText(PluginSettings.baseUrl());
+    dirField.setText(PluginSettings.rawDir());
+    cmdField.setText(PluginSettings.rawCmd());
+    baseField.setText(PluginSettings.rawBase());
     Dimension size = new Dimension(300, 26);
     dirField.setPreferredSize(size);
     cmdField.setPreferredSize(size);
@@ -68,11 +70,11 @@ public class SettingsDialog extends JDialog {
         "内嵌页面加载与存活探测的地址（如 http://127.0.0.1:3080）", baseField);
 
     JButton resetBtn = new JButton("恢复默认");
+    resetBtn.setToolTipText("把推荐默认值填入输入框（点「确定」才生效）");
     resetBtn.addActionListener(e -> {
-      PluginSettings.reset();
-      dirField.setText(PluginSettings.harnessDir());
-      cmdField.setText(PluginSettings.startCommand());
-      baseField.setText(PluginSettings.baseUrl());
+      dirField.setText(PluginSettings.DEFAULT_DIR);
+      cmdField.setText(PluginSettings.DEFAULT_CMD);
+      baseField.setText(PluginSettings.DEFAULT_BASE);
     });
     JButton okBtn = new JButton("确定");
     okBtn.addActionListener(e -> {
@@ -87,9 +89,17 @@ public class SettingsDialog extends JDialog {
     buttons.add(okBtn);
     buttons.add(cancelBtn);
 
+    // 底部提示：三项全空保存 = 未配置（工具窗将显示安装引导而不是加载网页）
+    JBLabel hint = new JBLabel("三项全空并保存 = 视为未配置（窗口显示安装引导）");
+    hint.setForeground(UIUtil.getContextHelpForeground());
+    JPanel bottom = new JPanel(new BorderLayout(8, 0));
+    bottom.add(hint, BorderLayout.CENTER);
+    bottom.add(buttons, BorderLayout.EAST);
+    bottom.setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 0));
+
     JPanel root = new JPanel(new BorderLayout());
     root.add(form, BorderLayout.CENTER);
-    root.add(buttons, BorderLayout.SOUTH);
+    root.add(bottom, BorderLayout.SOUTH);
     root.setBorder(BorderFactory.createEmptyBorder(4, 0, 10, 0));
     setContentPane(root);
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);

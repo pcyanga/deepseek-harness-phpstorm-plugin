@@ -150,6 +150,9 @@ public final class HarnessManager {
 
   /** 存活探测（绑定当前设置的服务地址；地址变化时重建客户端）。 */
   public boolean probe() {
+    if (PluginSettings.unconfigured()) {
+      return false; // 未配置：不探测默认地址（防误判在线/自动拉起与机器无关的默认命令），引导页接管
+    }
     String base = PluginSettings.baseUrl();
     DshClient c = client;
     if (c == null || !base.equals(cachedBase)) {
@@ -269,6 +272,8 @@ public final class HarnessManager {
     try {
       if (probe()) {
         ok = true;
+      } else if (PluginSettings.unconfigured()) {
+        System.err.println("[AiWeb] harness not configured, skip auto-start (open ⚙ Settings to configure)");
       } else {
         String dir = PluginSettings.harnessDir();
         String cmd = PluginSettings.startCommand();

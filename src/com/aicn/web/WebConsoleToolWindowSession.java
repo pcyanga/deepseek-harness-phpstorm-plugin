@@ -33,10 +33,12 @@ import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreePath;
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -94,6 +96,8 @@ final class WebConsoleToolWindowSession {
 
   // 服务地址/启动命令/工作目录均可在工具窗「⚙ 设置」修改（PluginSettings，默认值见该类）。
   private static final int MAX_INJECT_CHARS = 50000;
+  /** 引导页「打开安装教程」目标：DeepSeek Harness 官方仓库 README（含 npx/源码安装方式）。 */
+  private static final String DSH_TUTORIAL_URL = "https://github.com/deepseek-ai/deepseek-harness";
 
   /**
    * 注入 JS 的“当前项目文件夹自动注册为工作区”部分。
@@ -154,6 +158,8 @@ final class WebConsoleToolWindowSession {
   private JButton harnessButton;
   private JBCefBrowser browser;
   private volatile boolean disposed;                   // 内容已销毁（导航/回调自检用）
+  private CardLayout centerCards;                      // 中央内容卡：browser / guide
+  private JPanel centerHost;
 
   // JS→Java：网页端真正发出消息后回调（发送把「选中代码」引用 chip 拼进消息并发出时，
   // 自动清空编辑器里对应的选区）。查询实例随浏览器重建/工具窗销毁而释放；页面桥函数
@@ -263,6 +269,7 @@ final class WebConsoleToolWindowSession {
     if (disposed || harnessButton == null) {
       return;
     }
+    syncConfigView(); // 设置被本窗口/其它窗口改为「未配置/已配置」时，切换 引导卡 ↔ 浏览器卡
     HarnessManager m = HarnessManager.get();
     int st = m.state();
     if (st != HarnessManager.ON && m.probe()) {
@@ -373,7 +380,12 @@ final class WebConsoleToolWindowSession {
       bar.add(left, BorderLayout.WEST);
       bar.add(right, BorderLayout.EAST);
       root.add(bar, BorderLayout.NORTH);
-      root.add(browser.getComponent(), BorderLayout.CENTER);
+      // 中央内容双卡：已配置 → 网页；未配置 → 安装引导（见 syncConfigView/buildGuideCard）
+      centerCards = new CardLayout();
+      centerHost = new JPanel(centerCards);
+      centerHost.add(browser.getComponent(), "browser");
+      centerHost.add(buildGuideCard(), "guide");
+      root.add(centerHost, BorderLayout.CENTER);
 
       // 拖放：文件/代码 → 注入输入框（挂 JCEF 组件上，拦截 OS 级拖入）
       browser.getComponent().setDropTarget(new DropTarget(browser.getComponent(),
@@ -401,6 +413,7 @@ final class WebConsoleToolWindowSession {
       // 工作区注册由页面加载后注入的 __dshEnsureWorkspace 完成（页内 /api/workspace/create）。
       harnessState = 1;
       updateHarnessButton();
+      syncConfigView(); // 初始就按「未配置/已配置」选中引导卡或浏览器卡
       final HarnessManager mgr = HarnessManager.get();
       mgr.removeWatcher(harnessWatcher); // 防重入重复注册（切项目复用实例时）
       mgr.addWatcher(harnessWatcher);
@@ -910,6 +923,24 @@ final class WebConsoleToolWindowSession {
     return js;
   }
 
+  private volatile String cachedUiTrimJs;
+
+  /** 工具窗精简视图脚本（jar 内资源 /web/ui-trim.js：隐藏侧边栏/添加工作区/搜索，缓存一次）。 */
+  private String uiTrimJs() {
+    String js = cachedUiTrimJs;
+    if (js == null) {
+      try (java.io.InputStream in = WebConsoleToolWindowSession.class
+          .getResourceAsStream("/web/ui-trim.js")) {
+        js = in == null ? "" : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+      } catch (Exception e) {
+        System.err.println("[AiWeb] ui-trim load error: " + e);
+        js = "";
+      }
+      cachedUiTrimJs = js;
+    }
+    return js;
+  }
+
   // 选中代码 → 输入框：由下方 hover 确认条通道负责（顶栏按钮已移除，0.3.16）
 
   // ----------------------------------------------------- 选中代码 → hover 确认条（qoder 风格）
@@ -1371,6 +1402,8 @@ final class WebConsoleToolWindowSession {
         + "window.__dshAutoOpenChip&&window.__dshAutoOpenChip();"
         + "window.__dshMenuPick&&window.__dshMenuPick();"
         + "window.__dshEnsureWorkspace&&window.__dshEnsureWorkspace();})();";
+    // 精简视图注入：隐藏侧边栏/添加工作区/搜索（幂等脚本，自身带 MutationObserver 防抖响应）
+    js += ";" + uiTrimJs();
     browser.getCefBrowser().executeJavaScript(js, "about:blank", 0);
   }
 
@@ -1425,37 +1458,131 @@ final class WebConsoleToolWindowSession {
     return (t != null && !t.isEmpty()) ? base + "/?token=" + t : base;
   }
 
-  /** 打开「⚙ 设置」对话框；服务地址变化则作废 token/客户端并结束自启实例、在新地址重探测。 */
+  /** 打开「⚙ 设置」对话框；应用后按「未配置 ↔ 已配置」与地址变化统一处理后事。 */
   private void openSettings() {
+    final boolean wasUc = PluginSettings.unconfigured();
     final String oldBase = PluginSettings.baseUrl();
     SettingsDialog dlg = new SettingsDialog(harnessButton);
     dlg.setVisible(true);
-    if (!dlg.applied()) {
+    if (dlg.applied()) {
+      finishSettingsApplied(wasUc, oldBase);
+    }
+  }
+
+  /**
+   * 设置落盘后的统一动作（设置对话框「确定」/ 引导页「快速开始」共用）：
+   *  - 仍「未配置」（三项全空保存）：作废连接并结束自启实例，窗口留在引导页；
+   *  - 已配置：切到浏览器卡；此前未配置或服务地址变化 → 重新探测/按新值启动。
+   */
+  private void finishSettingsApplied(boolean wasUc, String oldBase) {
+    final HarnessManager mgr = HarnessManager.get();
+    if (PluginSettings.unconfigured()) {
+      if (!wasUc) {
+        mgr.invalidate(); // 从「已配置」清成空：旧 token/客户端作废，自启实例一并结束
+      }
+      harnessState = HarnessManager.OFF;
+      syncConfigView();
       return;
     }
-    final HarnessManager mgr = HarnessManager.get();
-    if (oldBase.equals(PluginSettings.baseUrl())) {
-      return; // 仅目录/命令变化：下次需要自启时由管理器按新值执行
+    syncConfigView(); // 引导页 → 浏览器卡
+    final boolean baseChanged = !oldBase.equals(PluginSettings.baseUrl());
+    if (baseChanged) {
+      mgr.invalidate(); // 服务地址变了：旧 token 属于旧服务；作废并结束自启实例
     }
-    // 服务地址变了：旧 token 属于旧服务；作废并结束自启实例，然后探测新地址
-    mgr.invalidate();
-    harnessState = 1;
-    updateHarnessButton();
-    mgr.ensureRunning(() -> {
-      if (disposed) {
-        return;
-      }
-      harnessState = mgr.state();
+    if (wasUc || baseChanged) {
+      harnessState = HarnessManager.STARTING;
       updateHarnessButton();
-      if (harnessState == HarnessManager.ON) {
-        navigateIfNeeded();
-        scheduleFilterInjection();
-      }
-    });
+      mgr.ensureRunning(() -> {
+        if (disposed) {
+          return;
+        }
+        harnessState = mgr.state();
+        updateHarnessButton();
+        if (harnessState == HarnessManager.ON) {
+          navigateIfNeeded();
+          scheduleFilterInjection();
+        }
+      });
+    } else {
+      updateHarnessButton(); // 仅目录/命令变化：下次需要自启时由管理器按新值执行
+    }
+  }
+
+  /** 引导页「快速开始」：写入推荐默认配置并重探测/启动（等价于设置对话框里恢复默认后确定）。 */
+  private void quickStart() {
+    PluginSettings.apply(PluginSettings.DEFAULT_DIR, PluginSettings.DEFAULT_CMD, PluginSettings.DEFAULT_BASE);
+    finishSettingsApplied(true, PluginSettings.baseUrl());
+  }
+
+  /** 引导页「打开安装教程」：跳转 DeepSeek Harness 官方仓库 README。 */
+  private void openTutorial() {
+    try {
+      Desktop.getDesktop().browse(new URI(DSH_TUTORIAL_URL));
+    } catch (Exception ex) {
+      System.err.println("[AiWeb] open tutorial: " + ex);
+    }
+  }
+
+  /** 按「未配置」状态切换中央内容卡（guide=安装引导 / browser=网页）并同步顶栏按钮。 */
+  private void syncConfigView() {
+    if (centerCards == null || centerHost == null || disposed) {
+      return;
+    }
+    centerCards.show(centerHost, PluginSettings.unconfigured() ? "guide" : "browser");
+    updateHarnessButton();
+  }
+
+  /** 未配置引导卡：说明 + 下载安装教程（npx / 源码）+ 快速开始与设置入口。 */
+  private JPanel buildGuideCard() {
+    String html = "<html><body>"
+        + "<h2>尚未检测到 Harness 服务</h2>"
+        + "<p>本工具窗内嵌 <b>DeepSeek Harness（dsh）</b> 的网页对话，需要你先在本机运行 dsh 服务。"
+        + "如果你已在终端跑着 dsh（默认 http://127.0.0.1:3080），点下方「快速开始」或「打开设置」配置后即可自动连接。</p>"
+        + "<p><b>① 安装 dsh</b>（任选其一，完整教程见「打开安装教程」）</p>"
+        + "<p>&nbsp;&nbsp;• 一行安装（无需源码，需 Node.js）：<code>npx @deepseek-ai/dsh web</code></p>"
+        + "<p>&nbsp;&nbsp;• 从源码运行：<code>git clone https://github.com/deepseek-ai/deepseek-harness</code>，"
+        + "进入目录后 <code>pnpm install</code> → <code>pnpm run build</code> → <code>pnpm dsh web</code></p>"
+        + "<p><b>② 配置本插件</b>：在「⚙ 打开设置」里填 <b>工作目录</b>（dsh 代码所在目录）、"
+        + "<b>启动命令</b>（服务未运行时代理执行，如 <code>pnpm dsh web --no-open</code>）、"
+        + "<b>服务地址</b>（默认 127.0.0.1:3080）；三项全空保存 = 未配置。</p>"
+        + "<p><b>③ 回到本窗口</b>：服务就绪后自动载入对话界面。</p>"
+        + "</body></html>";
+    JBLabel body = new JBLabel(html);
+    body.setVerticalAlignment(SwingConstants.TOP);
+    body.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+
+    JBLabel status = new JBLabel("未配置模式：不自动探测/启动服务，配置完成后立即生效。");
+    status.setForeground(UIUtil.getContextHelpForeground());
+
+    JButton quickBtn = new JButton("⚡ 快速开始（推荐默认配置）");
+    quickBtn.setToolTipText("按推荐默认值写入：工作目录 " + PluginSettings.DEFAULT_DIR + "、启动命令 "
+        + PluginSettings.DEFAULT_CMD + "、服务地址 " + PluginSettings.DEFAULT_BASE);
+    quickBtn.addActionListener(e -> quickStart());
+    JButton settingsBtn = new JButton("⚙ 打开设置");
+    settingsBtn.addActionListener(e -> openSettings());
+    JButton tutorialBtn = new JButton("打开安装教程");
+    tutorialBtn.addActionListener(e -> openTutorial());
+    JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+    buttons.add(quickBtn);
+    buttons.add(settingsBtn);
+    buttons.add(tutorialBtn);
+
+    JPanel card = new JPanel(new BorderLayout(0, 10));
+    card.setBorder(BorderFactory.createEmptyBorder(12, 18, 12, 18));
+    card.add(status, BorderLayout.NORTH);
+    card.add(body, BorderLayout.CENTER);
+    card.add(buttons, BorderLayout.SOUTH);
+    return card;
   }
 
   private void updateHarnessButton() {
     if (harnessButton == null) {
+      return;
+    }
+    if (PluginSettings.unconfigured()) {
+      // 未配置：无探测无自启（HarnessManager 守卫），按钮仅作提示；引导卡提供配置入口
+      harnessButton.setText("⏻ Harness 未配置");
+      harnessButton.setEnabled(false);
       return;
     }
     switch (harnessState) {

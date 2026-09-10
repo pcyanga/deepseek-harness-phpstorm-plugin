@@ -54,12 +54,20 @@ if (Test-Path "$root\resources\web") {
   Copy-Item "$root\resources\web" "$out\classes\" -Recurse -Force
   Write-Host "web scripts bundled into classes"
 }
+# bundle META-INF/plugin.xml & LICENSE.txt into the classes jar too.
+# Marketplace requires the zip plugin root to contain only lib/ - everything
+# else (plugin.xml, icons, scripts, license) must live inside the jar.
+if (Test-Path "$root\resources\META-INF") {
+  Copy-Item "$root\resources\META-INF" "$out\classes\" -Recurse -Force
+}
+if (Test-Path "$root\resources\LICENSE.txt") {
+  Copy-Item "$root\resources\LICENSE.txt" "$out\classes\LICENSE.txt" -Force
+}
+Write-Host "META-INF & LICENSE bundled into classes"
 
 Write-Host "== 2/4 package =="
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
-New-Item -ItemType Directory -Force -Path "$pluginDir\META-INF" | Out-Null
 New-Item -ItemType Directory -Force -Path "$pluginDir\lib" | Out-Null
-Copy-Item "$root\resources\*" "$pluginDir" -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path "$out\tools" | Out-Null
 & $javac -encoding UTF-8 -source 17 -target 17 -Xlint:none -d "$out\tools" "$root\tools\MakeJar.java" 2>&1 | ForEach-Object { Write-Host $_ }

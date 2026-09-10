@@ -10,3 +10,6 @@ tools/*.jar
 # IDE 本地配置
 .idea/
 *.iml
+
+# 调试/验证截图（过程产物，不入库）
+tools/*.png
